@@ -122,7 +122,7 @@ export function Game({
   onRestartRequest,
 }: GameProps) {
   const sounds = useGameSounds();
-  const { submitScore } = useLeaderboard("cross-the-roads");
+  const { submitScore } = useLeaderboard("crossy-rivers");
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
