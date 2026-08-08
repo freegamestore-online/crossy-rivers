@@ -1,5 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGameSounds, useLeaderboard } from "@freegamestore/games";
+import {
+  CROC_BODY,
+  CROC_SNOUT,
+  CROC_TOOTH,
+  EYE_PUPIL,
+  EYE_WHITE,
+  FROG_BELLY,
+  FROG_BODY,
+  FROG_EYE,
+  FROG_LEG,
+  FROG_SMILE,
+  ROAD_FALLBACK,
+  ROAD_PALETTE,
+  SAFE_LANE_ALT_EVEN,
+  SAFE_LANE_ALT_ODD,
+  SAFE_LANE_BASE,
+  SKY_BOTTOM,
+  SKY_TOP,
+  SNAKE_BODY,
+  SNAKE_HEAD,
+  SNAKE_TONGUE,
+} from "../lib/palette";
 
 interface GameProps {
   onScore: (n: number) => void;
@@ -50,7 +72,7 @@ function laneAt(worldY: number): Lane {
       cars: 0,
       carLength: 0,
       phase: 0,
-      color: "#2f8f46",
+      color: SAFE_LANE_BASE,
     };
   }
 
@@ -64,7 +86,7 @@ function laneAt(worldY: number): Lane {
       cars: 0,
       carLength: 0,
       phase: 0,
-      color: worldY % 2 === 0 ? "#3d9d52" : "#328a48",
+      color: worldY % 2 === 0 ? SAFE_LANE_ALT_EVEN : SAFE_LANE_ALT_ODD,
     };
   }
 
@@ -74,8 +96,7 @@ function laneAt(worldY: number): Lane {
   const dir: 1 | -1 = (h & 1) === 0 ? 1 : -1;
   const phase = ((h >>> 17) % 1000) / 1000;
 
-  const palette = ["#ef4444", "#f59e0b", "#3b82f6", "#22c55e", "#f97316"];
-  const color = palette[(h >>> 21) % palette.length] ?? "#ef4444";
+  const color = ROAD_PALETTE[(h >>> 21) % ROAD_PALETTE.length] ?? ROAD_FALLBACK;
 
   return {
     kind: "road",
@@ -106,6 +127,7 @@ export function Game({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  const viewportRef = useRef({ width: 0, height: 0 });
   const stateRef = useRef<GameState>({
     col: Math.floor(GRID_COLS / 2),
     row: GRID_ROWS - 1,
@@ -130,14 +152,15 @@ export function Game({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const { width, height } = canvas;
+    const width = viewportRef.current.width || canvas.clientWidth;
+    const height = viewportRef.current.height || canvas.clientHeight;
     const cell = Math.min(width / GRID_COLS, height / GRID_ROWS);
     const offsetX = (width - cell * GRID_COLS) / 2;
     const offsetY = (height - cell * GRID_ROWS) / 2;
 
     const sky = ctx.createLinearGradient(0, 0, 0, height);
-    sky.addColorStop(0, "#dff3ff");
-    sky.addColorStop(1, "#b9e6ff");
+    sky.addColorStop(0, SKY_TOP);
+    sky.addColorStop(1, SKY_BOTTOM);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, height);
 
@@ -150,13 +173,17 @@ export function Game({
       const worldY = state.scroll + (GRID_ROWS - 1 - row);
       const lane = laneAt(worldY);
 
-      ctx.fillStyle = lane.kind === "road" ? "#242933" : lane.color;
+      ctx.fillStyle = lane.kind === "road" ? lane.color : lane.color;
       ctx.fillRect(0, row * cell, GRID_COLS * cell, cell);
 
       if (lane.kind === "road") {
-        ctx.fillStyle = "rgba(255,255,255,0.28)";
-        for (let dash = 0; dash < GRID_COLS; dash += 2) {
-          ctx.fillRect(dash * cell + cell * 0.25, row * cell + cell * 0.46, cell * 0.5, cell * 0.08);
+        // Water ripples.
+        ctx.fillStyle = "rgba(220, 242, 255, 0.22)";
+        for (let ripple = 0; ripple < GRID_COLS; ripple += 1) {
+          const waveX = ripple * cell + ((timeSec * 28 + row * 11) % cell) * 0.35;
+          ctx.beginPath();
+          ctx.ellipse(waveX, row * cell + cell * 0.52, cell * 0.2, cell * 0.05, 0, 0, Math.PI * 2);
+          ctx.fill();
         }
 
         const cycle = GRID_COLS + 6;
@@ -165,62 +192,88 @@ export function Game({
         for (let i = 0; i < lane.cars; i += 1) {
           const progress = lane.phase * cycle + i * spacing + lane.dir * timeSec * lane.speed;
           const x = wrap(progress, cycle) - 3;
+          const isCroc = i % 2 === 0;
 
           const carX = x * cell;
-          const carY = row * cell + cell * 0.15;
+          const carY = row * cell + cell * 0.22;
           const carW = lane.carLength * cell;
-          const carH = cell * 0.7;
+          const carH = cell * 0.56;
 
-          // Vehicle body
-          ctx.fillStyle = lane.color;
-          ctx.beginPath();
-          ctx.roundRect(carX, carY, carW, carH, cell * 0.18);
-          ctx.fill();
+          if (isCroc) {
+            // Crocodile body.
+            ctx.fillStyle = CROC_BODY;
+            ctx.beginPath();
+            ctx.roundRect(carX + carW * 0.02, carY, carW * 0.96, carH, cell * 0.2);
+            ctx.fill();
 
-          // Roof/cabin
-          ctx.fillStyle = "rgba(15,23,42,0.2)";
-          ctx.beginPath();
-          ctx.roundRect(carX + carW * 0.2, carY + carH * 0.14, carW * 0.6, carH * 0.45, cell * 0.12);
-          ctx.fill();
+            // Crocodile snout.
+            const snoutX = lane.dir === 1 ? carX + carW * 0.92 : carX + carW * 0.08;
+            ctx.fillStyle = CROC_SNOUT;
+            ctx.beginPath();
+            ctx.ellipse(snoutX, carY + carH * 0.52, carW * 0.12, carH * 0.23, 0, 0, Math.PI * 2);
+            ctx.fill();
 
-          // Windshield and rear window
-          ctx.fillStyle = "rgba(191,219,254,0.8)";
-          ctx.beginPath();
-          ctx.roundRect(carX + carW * 0.25, carY + carH * 0.2, carW * 0.22, carH * 0.22, cell * 0.06);
-          ctx.roundRect(carX + carW * 0.53, carY + carH * 0.2, carW * 0.22, carH * 0.22, cell * 0.06);
-          ctx.fill();
+            // Eyes.
+            ctx.fillStyle = EYE_WHITE;
+            ctx.beginPath();
+            ctx.arc(carX + carW * 0.3, carY + carH * 0.18, cell * 0.045, 0, Math.PI * 2);
+            ctx.arc(carX + carW * 0.66, carY + carH * 0.18, cell * 0.045, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = EYE_PUPIL;
+            ctx.beginPath();
+            ctx.arc(carX + carW * 0.3, carY + carH * 0.18, cell * 0.02, 0, Math.PI * 2);
+            ctx.arc(carX + carW * 0.66, carY + carH * 0.18, cell * 0.02, 0, Math.PI * 2);
+            ctx.fill();
 
-          // Wheels
-          const wheelR = carH * 0.13;
-          ctx.fillStyle = "#111827";
-          ctx.beginPath();
-          ctx.arc(carX + carW * 0.22, carY + carH * 0.94, wheelR, 0, Math.PI * 2);
-          ctx.arc(carX + carW * 0.78, carY + carH * 0.94, wheelR, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.fillStyle = "#9ca3af";
-          ctx.beginPath();
-          ctx.arc(carX + carW * 0.22, carY + carH * 0.94, wheelR * 0.45, 0, Math.PI * 2);
-          ctx.arc(carX + carW * 0.78, carY + carH * 0.94, wheelR * 0.45, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Head/tail lights based on lane direction
-          if (lane.dir === 1) {
-            ctx.fillStyle = "#fde68a";
-            ctx.fillRect(carX + carW * 0.92, carY + carH * 0.28, carW * 0.06, carH * 0.14);
-            ctx.fillRect(carX + carW * 0.92, carY + carH * 0.56, carW * 0.06, carH * 0.14);
-
-            ctx.fillStyle = "#ef4444";
-            ctx.fillRect(carX + carW * 0.02, carY + carH * 0.28, carW * 0.04, carH * 0.14);
-            ctx.fillRect(carX + carW * 0.02, carY + carH * 0.56, carW * 0.04, carH * 0.14);
+            // Teeth.
+            ctx.fillStyle = CROC_TOOTH;
+            for (let tooth = 0; tooth < 4; tooth += 1) {
+              const tx = carX + carW * (0.22 + tooth * 0.16);
+              ctx.beginPath();
+              ctx.moveTo(tx, carY + carH * 0.75);
+              ctx.lineTo(tx + carW * 0.05, carY + carH * 0.75);
+              ctx.lineTo(tx + carW * 0.025, carY + carH * 0.9);
+              ctx.closePath();
+              ctx.fill();
+            }
           } else {
-            ctx.fillStyle = "#fde68a";
-            ctx.fillRect(carX + carW * 0.02, carY + carH * 0.28, carW * 0.06, carH * 0.14);
-            ctx.fillRect(carX + carW * 0.02, carY + carH * 0.56, carW * 0.06, carH * 0.14);
+            // Snake body.
+            ctx.strokeStyle = SNAKE_BODY;
+            ctx.lineWidth = Math.max(2, cell * 0.12);
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            for (let segment = 0; segment <= 8; segment += 1) {
+              const t = segment / 8;
+              const sx = carX + t * carW;
+              const sy = carY + carH * 0.55 + Math.sin(t * Math.PI * 3 + timeSec * 6) * carH * 0.25;
+              if (segment === 0) {
+                ctx.moveTo(sx, sy);
+              } else {
+                ctx.lineTo(sx, sy);
+              }
+            }
+            ctx.stroke();
 
-            ctx.fillStyle = "#ef4444";
-            ctx.fillRect(carX + carW * 0.94, carY + carH * 0.28, carW * 0.04, carH * 0.14);
-            ctx.fillRect(carX + carW * 0.94, carY + carH * 0.56, carW * 0.04, carH * 0.14);
+            // Snake head.
+            const headX = lane.dir === 1 ? carX + carW * 0.95 : carX + carW * 0.05;
+            const headY = carY + carH * 0.55;
+            ctx.fillStyle = SNAKE_HEAD;
+            ctx.beginPath();
+            ctx.ellipse(headX, headY, carW * 0.09, carH * 0.2, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Tongue.
+            ctx.strokeStyle = SNAKE_TONGUE;
+            ctx.lineWidth = Math.max(1, cell * 0.025);
+            ctx.beginPath();
+            const tongueDir = lane.dir === 1 ? 1 : -1;
+            ctx.moveTo(headX, headY);
+            ctx.lineTo(headX + tongueDir * carW * 0.1, headY - carH * 0.06);
+            ctx.moveTo(headX + tongueDir * carW * 0.1, headY - carH * 0.06);
+            ctx.lineTo(headX + tongueDir * carW * 0.13, headY - carH * 0.1);
+            ctx.moveTo(headX + tongueDir * carW * 0.1, headY - carH * 0.06);
+            ctx.lineTo(headX + tongueDir * carW * 0.13, headY - carH * 0.02);
+            ctx.stroke();
           }
         }
       }
@@ -229,55 +282,51 @@ export function Game({
     const px = state.col * cell;
     const py = state.row * cell;
 
-    // Chicken body
-    ctx.fillStyle = "#fff8dc";
+    // Frog body.
+    ctx.fillStyle = FROG_BODY;
     ctx.beginPath();
     ctx.roundRect(px + cell * 0.14, py + cell * 0.24, cell * 0.72, cell * 0.6, cell * 0.28);
     ctx.fill();
 
-    // Chicken wing
-    ctx.fillStyle = "#f8e9b6";
+    // Frog belly.
+    ctx.fillStyle = FROG_BELLY;
     ctx.beginPath();
-    ctx.ellipse(px + cell * 0.52, py + cell * 0.54, cell * 0.16, cell * 0.12, 0.5, 0, Math.PI * 2);
+    ctx.ellipse(px + cell * 0.5, py + cell * 0.57, cell * 0.2, cell * 0.14, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Chicken head
-    ctx.fillStyle = "#fff8dc";
+    // Frog head bump.
+    ctx.fillStyle = FROG_BODY;
     ctx.beginPath();
-    ctx.arc(px + cell * 0.36, py + cell * 0.24, cell * 0.2, 0, Math.PI * 2);
+    ctx.arc(px + cell * 0.5, py + cell * 0.28, cell * 0.23, 0, Math.PI * 2);
     ctx.fill();
 
-    // Comb
-    ctx.fillStyle = "#ef4444";
+    // Eyes.
+    ctx.fillStyle = FROG_EYE;
     ctx.beginPath();
-    ctx.arc(px + cell * 0.26, py + cell * 0.08, cell * 0.06, 0, Math.PI * 2);
-    ctx.arc(px + cell * 0.35, py + cell * 0.05, cell * 0.06, 0, Math.PI * 2);
-    ctx.arc(px + cell * 0.44, py + cell * 0.08, cell * 0.06, 0, Math.PI * 2);
+    ctx.arc(px + cell * 0.34, py + cell * 0.18, cell * 0.09, 0, Math.PI * 2);
+    ctx.arc(px + cell * 0.66, py + cell * 0.18, cell * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = EYE_PUPIL;
+    ctx.beginPath();
+    ctx.arc(px + cell * 0.34, py + cell * 0.19, cell * 0.035, 0, Math.PI * 2);
+    ctx.arc(px + cell * 0.66, py + cell * 0.19, cell * 0.035, 0, Math.PI * 2);
     ctx.fill();
 
-    // Beak
-    ctx.fillStyle = "#f59e0b";
+    // Frog smile.
+    ctx.strokeStyle = FROG_SMILE;
+    ctx.lineWidth = Math.max(1, cell * 0.03);
     ctx.beginPath();
-    ctx.moveTo(px + cell * 0.53, py + cell * 0.23);
-    ctx.lineTo(px + cell * 0.67, py + cell * 0.29);
-    ctx.lineTo(px + cell * 0.53, py + cell * 0.35);
-    ctx.closePath();
-    ctx.fill();
+    ctx.arc(px + cell * 0.5, py + cell * 0.42, cell * 0.12, 0.2, Math.PI - 0.2);
+    ctx.stroke();
 
-    // Eye
-    ctx.fillStyle = "#111827";
-    ctx.beginPath();
-    ctx.arc(px + cell * 0.4, py + cell * 0.22, cell * 0.03, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Legs
-    ctx.strokeStyle = "#f59e0b";
+    // Legs.
+    ctx.strokeStyle = FROG_LEG;
     ctx.lineWidth = Math.max(1, cell * 0.05);
     ctx.beginPath();
-    ctx.moveTo(px + cell * 0.38, py + cell * 0.84);
-    ctx.lineTo(px + cell * 0.36, py + cell * 0.96);
-    ctx.moveTo(px + cell * 0.58, py + cell * 0.84);
-    ctx.lineTo(px + cell * 0.6, py + cell * 0.96);
+    ctx.moveTo(px + cell * 0.34, py + cell * 0.78);
+    ctx.lineTo(px + cell * 0.24, py + cell * 0.92);
+    ctx.moveTo(px + cell * 0.66, py + cell * 0.78);
+    ctx.lineTo(px + cell * 0.76, py + cell * 0.92);
     ctx.stroke();
 
     ctx.restore();
@@ -316,6 +365,9 @@ export function Game({
     if (!root || !canvas) return;
 
     const rect = root.getBoundingClientRect();
+    viewportRef.current.width = rect.width;
+    viewportRef.current.height = rect.height;
+
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.floor(rect.width * dpr);
     canvas.height = Math.floor(rect.height * dpr);
@@ -479,7 +531,7 @@ export function Game({
   }, [paused]);
 
   return (
-    <div className="relative h-full w-full px-3 pb-3 pt-2">
+    <div className="relative h-full w-full px-3 pb-24 pt-2 sm:pb-3">
       <div
         ref={rootRef}
         className="mx-auto h-full w-full max-w-3xl overflow-hidden rounded-2xl border"

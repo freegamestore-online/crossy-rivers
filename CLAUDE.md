@@ -7,6 +7,9 @@ A free game on FreeGameStore.
 - Build: `pnpm build`
 - Deploy: `git push origin main` (auto-deploys to R2 via GitHub Actions)
 
-Free, MIT-licensed, no tracking. For platform conventions, read
-https://freegamestore.online/skills.md
-before writing or changing anything.
+Free, MIT-licensed, no tracking.
+
+Platform-wide conventions live in SKILLS.md:
+https://raw.githubusercontent.com/freegamestore-online/freegamestore/main/SKILLS.md
+
+Keep this CLAUDE.md focused on repo-specific details only.
